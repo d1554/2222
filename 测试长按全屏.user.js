@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (防误触/防幽灵点击)
+// @name         安卓霸权键 (松手触发稳定版)
 // @namespace    http://tampermonkey.net/
-// @version      46.0
-// @description  修复退出全屏误触"上一集"问题；强力拦截幽灵点击；2.5秒宽松双击S；长按2秒H
+// @version      47.0
+// @description  按住2秒提示就绪，松手瞬间触发H(彻底解决黑屏/误触)；2.5秒宽松双击S
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -57,7 +57,8 @@
             keyChar = 's'; keyCode = 83;
         } else if (keyName === 'h') {
             keyChar = 'h'; keyCode = 72;
-            showCounter("H", "#00d2ff", 1.1);
+            // 触发时的提示
+            showCounter("H", "#00d2ff", 1.2);
         }
 
         const eventConfig = {
@@ -79,16 +80,15 @@
         });
     }
 
-    // --- 3. 全局长按 H (核心修复区) ---
+    // --- 3. 全局长按 H (松手触发机制) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
     let startY = 0;
     
     // 状态标记
-    let isHolding = false;   // 正在进行长按逻辑
-    let sBlocker = false;    // S键屏蔽盾 (防播放暂停冲突)
-    let clickKiller = false; // 【新增】幽灵点击杀手 (防UI误触)
+    let hTriggerReady = false; // 标记：是否已经按满时间，准备好触发了
+    let sBlocker = false;      // S键屏蔽盾
     
     const HOLD_TIME = 2000; 
     const DRAG_THRESHOLD = 30; 
@@ -98,8 +98,7 @@
         if (holdInterval) clearInterval(holdInterval);
         holdTimer = null;
         holdInterval = null;
-        // 延迟关闭 isHolding，确保能覆盖 touchend
-        setTimeout(() => { isHolding = false; }, 300);
+        hTriggerReady = false; // 重置就绪状态
     }
 
     // 监听触摸开始
@@ -116,31 +115,26 @@
         let count = 0;
         holdInterval = setInterval(() => {
             count++;
-            showCounter("·".repeat(count), "rgba(255, 255, 255, 0.6)", 1.0);
+            // 还没满时间时，显示点点
+            if (!hTriggerReady) {
+                showCounter("·".repeat(count), "rgba(255, 255, 255, 0.6)", 1.0);
+            }
         }, 600);
 
-        // 触发 H
+        // 计时结束：只标记状态，不立即触发
         holdTimer = setTimeout(() => {
-            isHolding = true; 
-            
-            // 1. 开启 S 键屏蔽盾 (延长至 3秒)
-            sBlocker = true;
-            setTimeout(() => { sBlocker = false; }, 3000);
-
-            // 2. 【核心】开启幽灵点击杀手 (0.5秒)
-            // 在这0.5秒内，任何 click 事件都会被强制抹杀
-            clickKiller = true;
-            setTimeout(() => { clickKiller = false; }, 500);
-
-            resetHold();
-            triggerKey('h');
+            hTriggerReady = true; 
+            // 视觉提示用户：可以松手了
+            showCounter("H Ready", "#55ff55", 1.2); 
+            // 此时不发送按键，等待 touchend
         }, HOLD_TIME);
         
     }, { passive: true, capture: true });
 
     // 监听移动
     window.addEventListener('touchmove', function(e) {
-        if (!holdTimer) return;
+        // 如果移动距离过大，取消这次长按
+        if (startX === 0 && startY === 0) return;
         if(e.touches.length > 0){
             const dist = Math.sqrt(Math.pow(e.touches[0].clientX - startX, 2) + Math.pow(e.touches[0].clientY - startY, 2));
             if (dist > DRAG_THRESHOLD) {
@@ -149,34 +143,33 @@
         }
     }, { passive: true, capture: true });
 
-    // 触摸结束 (第一道防线)
+    // 【关键】触摸结束：在此处触发逻辑
     window.addEventListener('touchend', function(e) {
-        if (isHolding) {
+        
+        // 如果状态是“已就绪”，说明用户按满了2秒并松开了手指
+        if (hTriggerReady) {
+            // 1. 阻止浏览器默认的点击行为 (防止误触上一集)
             if (e.cancelable) {
-                e.preventDefault();
+                e.preventDefault(); 
                 e.stopPropagation();
             }
-        }
-        resetHold();
-    }, { capture: true }); 
 
-    // 【新增】点击事件拦截器 (第二道防线：幽灵点击杀手)
-    window.addEventListener('click', function(e) {
-        if (clickKiller) {
-            // 强行阻止点击事件传播
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            console.log("Ghost click killed by script!"); // 调试信息
-            return false;
+            // 2. 开启 S 键屏蔽盾 (防止松手引发的播放暂停被计入S)
+            sBlocker = true;
+            setTimeout(() => { sBlocker = false; }, 2000);
+
+            // 3. 发射 H 键
+            triggerKey('h');
         }
-    }, { capture: true }); // 使用 capture 在最外层拦截
+        
+        resetHold();
+    }, { capture: true }); // capture 确保优先拦截
 
     window.addEventListener('touchcancel', resetHold, { capture: true });
     
     // 拦截右键
     window.addEventListener('contextmenu', function(e) {
-        if (isHolding || sBlocker) {
+        if (hTriggerReady || sBlocker) {
             e.preventDefault();
             e.stopPropagation();
             return false;
