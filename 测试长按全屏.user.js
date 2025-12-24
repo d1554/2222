@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (精致UI版)
+// @name         安卓霸权键 (防误触/防幽灵点击)
 // @namespace    http://tampermonkey.net/
-// @version      45.0
-// @description  UI缩小不挡视线；修复长按H冲突；2.5秒宽松双击S；长按2秒H
+// @version      46.0
+// @description  修复退出全屏误触"上一集"问题；强力拦截幽灵点击；2.5秒宽松双击S；长按2秒H
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -12,13 +12,12 @@
 (function() {
     'use strict';
 
-    // --- 1. UI 系统 (精致小巧版) ---
+    // --- 1. UI 系统 (精致版) ---
     let counterBox = null;
 
     function initUI() {
         if (document.body) {
             counterBox = document.createElement('div');
-            // 【修改】字号改小(45px)，位置上移(20%)，背景半透明黑
             counterBox.style.cssText = `
                 position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
                 font-size: 45px; font-weight: bold; color: rgba(255, 255, 255, 0.95);
@@ -42,7 +41,6 @@
         counterBox.innerText = text;
         counterBox.style.color = color;
         counterBox.style.display = 'block';
-        // 动画幅度减小，看起来更稳重
         counterBox.style.transform = `translate(-50%, -50%) scale(${scale})`;
         
         clearTimeout(counterHideTimer);
@@ -81,13 +79,16 @@
         });
     }
 
-    // --- 3. 全局长按 H (防冲突核心) ---
+    // --- 3. 全局长按 H (核心修复区) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
     let startY = 0;
-    let isHolding = false; 
-    let sBlocker = false;  // S键屏蔽盾
+    
+    // 状态标记
+    let isHolding = false;   // 正在进行长按逻辑
+    let sBlocker = false;    // S键屏蔽盾 (防播放暂停冲突)
+    let clickKiller = false; // 【新增】幽灵点击杀手 (防UI误触)
     
     const HOLD_TIME = 2000; 
     const DRAG_THRESHOLD = 30; 
@@ -97,10 +98,11 @@
         if (holdInterval) clearInterval(holdInterval);
         holdTimer = null;
         holdInterval = null;
-        setTimeout(() => { isHolding = false; }, 200);
+        // 延迟关闭 isHolding，确保能覆盖 touchend
+        setTimeout(() => { isHolding = false; }, 300);
     }
 
-    // 触摸开始
+    // 监听触摸开始
     window.addEventListener('touchstart', function(e) {
         if (!document.querySelector('video, audio')) return;
         if (['INPUT', 'TEXTAREA'].includes(e.target.nodeName)) return;
@@ -121,9 +123,14 @@
         holdTimer = setTimeout(() => {
             isHolding = true; 
             
-            // 开启 S 键屏蔽盾 (1.5秒)
+            // 1. 开启 S 键屏蔽盾 (延长至 3秒)
             sBlocker = true;
-            setTimeout(() => { sBlocker = false; }, 1500);
+            setTimeout(() => { sBlocker = false; }, 3000);
+
+            // 2. 【核心】开启幽灵点击杀手 (0.5秒)
+            // 在这0.5秒内，任何 click 事件都会被强制抹杀
+            clickKiller = true;
+            setTimeout(() => { clickKiller = false; }, 500);
 
             resetHold();
             triggerKey('h');
@@ -131,7 +138,7 @@
         
     }, { passive: true, capture: true });
 
-    // 触摸移动
+    // 监听移动
     window.addEventListener('touchmove', function(e) {
         if (!holdTimer) return;
         if(e.touches.length > 0){
@@ -142,7 +149,7 @@
         }
     }, { passive: true, capture: true });
 
-    // 触摸结束 (拦截点击)
+    // 触摸结束 (第一道防线)
     window.addEventListener('touchend', function(e) {
         if (isHolding) {
             if (e.cancelable) {
@@ -152,6 +159,18 @@
         }
         resetHold();
     }, { capture: true }); 
+
+    // 【新增】点击事件拦截器 (第二道防线：幽灵点击杀手)
+    window.addEventListener('click', function(e) {
+        if (clickKiller) {
+            // 强行阻止点击事件传播
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            console.log("Ghost click killed by script!"); // 调试信息
+            return false;
+        }
+    }, { capture: true }); // 使用 capture 在最外层拦截
 
     window.addEventListener('touchcancel', resetHold, { capture: true });
     
@@ -180,7 +199,7 @@
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
 
-        // 屏蔽盾生效时，直接忽略
+        // 如果屏蔽盾生效，直接无视
         if (sBlocker) return;
 
         if (target.ended) return; 
