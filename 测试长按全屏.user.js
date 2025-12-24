@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V50 防死循环版)
+// @name         安卓霸权键 (V51 自动解除静音版)
 // @namespace    http://tampermonkey.net/
-// @version      50.0
-// @description  修复S键触发后的死循环/连按问题；加入isTrusted校验；H键绝杀冲突；双击S单次触发
+// @version      51.0
+// @description  自动解除静音；修复S键死循环；H键绝杀冲突；双击S单次触发
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -173,13 +173,22 @@
     }, { capture: true });
 
 
-    // --- 4. S 键逻辑 (V50: 核心修复死循环) ---
+    // --- 4. 自动解除静音模块 (新增) ---
+    function tryUnmute(target) {
+        // 如果视频被静音，或者音量为0
+        if (target.muted || target.volume === 0) {
+            target.muted = false;
+            if (target.volume === 0) target.volume = 1.0; // 拉满音量
+            showCounter("🔊", "rgba(255,255,255,0.8)", 0.8);
+        }
+    }
+
+
+    // --- 5. S 键逻辑 (含防死循环) ---
     let clickCount = 0;
     let lastEventTime = 0;    
     let lastTarget = null;
     let resetCountTimer = null; 
-    
-    // 【新增】S键自我冷却锁
     let sCooldown = false;
 
     const DOUBLE_CLICK_WINDOW = 2500; 
@@ -189,16 +198,21 @@
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
 
+        // 【优先执行】自动解除静音
+        // 只要视频开始播放，就尝试开启声音
+        if (e.type === 'play') {
+            tryUnmute(target);
+        }
+
+        // --- 以下为 S 键逻辑 ---
+
         // 1. 如果 H 键护盾生效，退出
         if (superBlocker) return;
 
-        // 2. 如果 S 键刚触发过(冷却中)，退出
-        // 这能防止 triggerKey('s') 导致页面刷新视频，从而反过来再次触发 globalHandler
+        // 2. 如果 S 键冷却中，退出
         if (sCooldown) return;
 
-        // 3. 【核心修复】真实性校验
-        // isTrusted 为 true 表示这是用户操作，为 false 表示是脚本触发的
-        // 很多网站切歌时是用代码触发 play/pause，这个判断能过滤掉它们
+        // 3. 真实性校验 (防死循环核心)
         if (e.isTrusted === false) return;
 
         if (target.ended) return; 
@@ -227,15 +241,10 @@
             }, DOUBLE_CLICK_WINDOW);
         }
         else if (clickCount >= 2) {
-            // 触发 S
             triggerKey('s');
             showCounter("S", "#fff");
 
-            // 立即重置计数
             clickCount = 0; 
-            
-            // 【新增】开启 1秒 冷却锁
-            // 在这 1秒 内，无视任何播放/暂停事件，打断死循环
             sCooldown = true;
             setTimeout(() => { sCooldown = false; }, 1000);
         }
