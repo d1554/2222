@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V52 独立解静音版)
+// @name         安卓霸权键 (V56 纯净解静音版)
 // @namespace    http://tampermonkey.net/
-// @version      52.0
-// @description  独立强力解静音(参考原版逻辑)；修复死循环；H键绝杀冲突；双击S单次触发
+// @version      56.0
+// @description  仅在播放时解静音(去掉全局触摸触发)；修复死循环；H键绝杀冲突；S键单次触发
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -79,20 +79,19 @@
         });
     }
 
-    // --- 3. 独立解静音模块 (参考您的脚本逻辑) ---
-    // 这个模块独立运行，不受 S/H 键逻辑的干扰
-    function unmuteVideo(videoElement) {
-        let modified = false;
+    // --- 3. 纯净解静音模块 (仅监听播放事件) ---
+    function tryUnmute(target) {
+        if (!target || !(target instanceof HTMLMediaElement)) return;
         
-        // 1. 解除静音状态
-        if (videoElement.muted) {
-            videoElement.muted = false;
+        let modified = false;
+        // 1. 解静音
+        if (target.muted) {
+            target.muted = false;
             modified = true;
         }
-        
-        // 2. 恢复音量 (手机上直接恢复到 100%，由系统音量控制最终大小)
-        if (videoElement.volume === 0) {
-            videoElement.volume = 1.0; 
+        // 2. 恢复音量
+        if (target.volume === 0) {
+            target.volume = 1.0;
             modified = true;
         }
 
@@ -101,15 +100,13 @@
         }
     }
 
-    // 使用捕获阶段 (true)，确保第一时间拦截到播放事件
+    // 只使用这一个监听器，不滥用 touchstart
     document.addEventListener('play', (e) => {
-        if (e.target instanceof HTMLMediaElement) {
-            unmuteVideo(e.target);
-        }
+        tryUnmute(e.target);
     }, true);
 
 
-    // --- 4. 全局长按 H (绝杀冲突版) ---
+    // --- 4. 全局长按 H (绝杀冲突版 - 保持稳定) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
@@ -207,4 +204,61 @@
     let clickCount = 0;
     let lastEventTime = 0;    
     let lastTarget = null;
-    let resetCountTimer = null
+    let resetCountTimer = null; 
+    let sCooldown = false;
+
+    const DOUBLE_CLICK_WINDOW = 2500; 
+    const EVENT_DEBOUNCE = 50;       
+
+    function globalHandler(e) {
+        const target = e.target;
+        if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
+
+        // 1. 如果 H 键护盾生效，退出
+        if (superBlocker) return;
+
+        // 2. 如果 S 键冷却中，退出
+        if (sCooldown) return;
+
+        // 3. 真实性校验
+        if (e.isTrusted === false) return;
+
+        if (target.ended) return; 
+        if (target.seeking) return; 
+        if (e.type !== 'play' && e.type !== 'pause') return;
+
+        const now = Date.now();
+        if (now - lastEventTime < EVENT_DEBOUNCE) return;
+        lastEventTime = now;
+
+        if (lastTarget && lastTarget !== target) {
+            clickCount = 0;
+            if (resetCountTimer) clearTimeout(resetCountTimer);
+        }
+        lastTarget = target;
+
+        // --- 计数逻辑 ---
+        clickCount++;
+
+        if (resetCountTimer) clearTimeout(resetCountTimer);
+
+        if (clickCount === 1) {
+            showCounter("1", "rgba(255,255,255,0.7)");
+            resetCountTimer = setTimeout(() => {
+                clickCount = 0;
+            }, DOUBLE_CLICK_WINDOW);
+        }
+        else if (clickCount >= 2) {
+            triggerKey('s');
+            showCounter("S", "#fff");
+
+            clickCount = 0; 
+            sCooldown = true;
+            setTimeout(() => { sCooldown = false; }, 1000);
+        }
+    }
+
+    window.addEventListener('play', globalHandler, true);
+    window.addEventListener('pause', globalHandler, true);
+
+})();
