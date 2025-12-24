@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V49 单次双击版)
+// @name         安卓霸权键 (V50 防死循环版)
 // @namespace    http://tampermonkey.net/
-// @version      49.0
-// @description  H键不动(绝杀冲突)；S键移除连击模式(双击仅触发一次S，立即重置)
+// @version      50.0
+// @description  修复S键触发后的死循环/连按问题；加入isTrusted校验；H键绝杀冲突；双击S单次触发
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    // --- 1. UI 系统 (保持精致版) ---
+    // --- 1. UI 系统 ---
     let counterBox = null;
 
     function initUI() {
@@ -79,14 +79,14 @@
         });
     }
 
-    // --- 3. 全局长按 H (V48完美版代码，未改动) ---
+    // --- 3. 全局长按 H (V48逻辑保持不变) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
     let startY = 0;
     
     let hTriggerReady = false; 
-    let superBlocker = false;  
+    let superBlocker = false; // H键的超级护盾
     
     const HOLD_TIME = 2000; 
     const DRAG_THRESHOLD = 30; 
@@ -173,13 +173,15 @@
     }, { capture: true });
 
 
-    // --- 4. S 键逻辑 (V49: 移除连击，触发即重置) ---
+    // --- 4. S 键逻辑 (V50: 核心修复死循环) ---
     let clickCount = 0;
     let lastEventTime = 0;    
     let lastTarget = null;
     let resetCountTimer = null; 
+    
+    // 【新增】S键自我冷却锁
+    let sCooldown = false;
 
-    // 保持宽松判定
     const DOUBLE_CLICK_WINDOW = 2500; 
     const EVENT_DEBOUNCE = 50;       
 
@@ -187,8 +189,17 @@
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
 
-        // 超级护盾 (H键保护)
+        // 1. 如果 H 键护盾生效，退出
         if (superBlocker) return;
+
+        // 2. 如果 S 键刚触发过(冷却中)，退出
+        // 这能防止 triggerKey('s') 导致页面刷新视频，从而反过来再次触发 globalHandler
+        if (sCooldown) return;
+
+        // 3. 【核心修复】真实性校验
+        // isTrusted 为 true 表示这是用户操作，为 false 表示是脚本触发的
+        // 很多网站切歌时是用代码触发 play/pause，这个判断能过滤掉它们
+        if (e.isTrusted === false) return;
 
         if (target.ended) return; 
         if (target.seeking) return; 
@@ -204,15 +215,13 @@
         }
         lastTarget = target;
 
-        // --- 核心逻辑修改区 ---
+        // --- 计数逻辑 ---
         clickCount++;
 
-        // 每次点击都先清除旧的重置定时器
         if (resetCountTimer) clearTimeout(resetCountTimer);
 
         if (clickCount === 1) {
             showCounter("1", "rgba(255,255,255,0.7)");
-            // 2.5秒内没点第二下，就归零
             resetCountTimer = setTimeout(() => {
                 clickCount = 0;
             }, DOUBLE_CLICK_WINDOW);
@@ -221,10 +230,14 @@
             // 触发 S
             triggerKey('s');
             showCounter("S", "#fff");
-            
-            // 【改动】立即重置计数器！
-            // 这样第3下点击就会变成 "1"，而不是 "S"
+
+            // 立即重置计数
             clickCount = 0; 
+            
+            // 【新增】开启 1秒 冷却锁
+            // 在这 1秒 内，无视任何播放/暂停事件，打断死循环
+            sCooldown = true;
+            setTimeout(() => { sCooldown = false; }, 1000);
         }
     }
 
