@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (松手触发稳定版)
+// @name         安卓霸权键 (V48 绝杀冲突版)
 // @namespace    http://tampermonkey.net/
-// @version      47.0
-// @description  按住2秒提示就绪，松手瞬间触发H(彻底解决黑屏/误触)；2.5秒宽松双击S
+// @version      48.0
+// @description  最高权限拦截：长按H期间及之后2秒，彻底屏蔽S键逻辑；2.5秒宽松双击S
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    // --- 1. UI 系统 (精致版) ---
+    // --- 1. UI 系统 ---
     let counterBox = null;
 
     function initUI() {
@@ -57,7 +57,6 @@
             keyChar = 's'; keyCode = 83;
         } else if (keyName === 'h') {
             keyChar = 'h'; keyCode = 72;
-            // 触发时的提示
             showCounter("H", "#00d2ff", 1.2);
         }
 
@@ -80,15 +79,15 @@
         });
     }
 
-    // --- 3. 全局长按 H (松手触发机制) ---
+    // --- 3. 全局长按 H (最高权限拦截逻辑) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
     let startY = 0;
     
-    // 状态标记
-    let hTriggerReady = false; // 标记：是否已经按满时间，准备好触发了
-    let sBlocker = false;      // S键屏蔽盾
+    // 【核心标志位】
+    let hTriggerReady = false; // 2秒已满，准备发射
+    let superBlocker = false;  // 超级护盾：激活时 S 键逻辑完全失效
     
     const HOLD_TIME = 2000; 
     const DRAG_THRESHOLD = 30; 
@@ -98,7 +97,8 @@
         if (holdInterval) clearInterval(holdInterval);
         holdTimer = null;
         holdInterval = null;
-        hTriggerReady = false; // 重置就绪状态
+        hTriggerReady = false;
+        // 注意：这里不重置 superBlocker，它由单独的定时器关闭
     }
 
     // 监听触摸开始
@@ -115,61 +115,79 @@
         let count = 0;
         holdInterval = setInterval(() => {
             count++;
-            // 还没满时间时，显示点点
             if (!hTriggerReady) {
                 showCounter("·".repeat(count), "rgba(255, 255, 255, 0.6)", 1.0);
             }
         }, 600);
 
-        // 计时结束：只标记状态，不立即触发
+        // 计时器
         holdTimer = setTimeout(() => {
             hTriggerReady = true; 
-            // 视觉提示用户：可以松手了
+            
+            // 【关键点1】一旦时间满2秒，立即开启超级护盾
+            // 此时无论手指是否松开，任何播放暂停都不算数
+            superBlocker = true; 
+            
             showCounter("H Ready", "#55ff55", 1.2); 
-            // 此时不发送按键，等待 touchend
         }, HOLD_TIME);
         
     }, { passive: true, capture: true });
 
     // 监听移动
     window.addEventListener('touchmove', function(e) {
-        // 如果移动距离过大，取消这次长按
         if (startX === 0 && startY === 0) return;
         if(e.touches.length > 0){
             const dist = Math.sqrt(Math.pow(e.touches[0].clientX - startX, 2) + Math.pow(e.touches[0].clientY - startY, 2));
             if (dist > DRAG_THRESHOLD) {
                 resetHold();
+                // 移动了就算失败，关闭护盾
+                superBlocker = false; 
             }
         }
     }, { passive: true, capture: true });
 
-    // 【关键】触摸结束：在此处触发逻辑
+    // 触摸结束：发射 H
     window.addEventListener('touchend', function(e) {
         
-        // 如果状态是“已就绪”，说明用户按满了2秒并松开了手指
         if (hTriggerReady) {
-            // 1. 阻止浏览器默认的点击行为 (防止误触上一集)
+            // 物理层拦截：尝试阻止点击
             if (e.cancelable) {
                 e.preventDefault(); 
                 e.stopPropagation();
             }
 
-            // 2. 开启 S 键屏蔽盾 (防止松手引发的播放暂停被计入S)
-            sBlocker = true;
-            setTimeout(() => { sBlocker = false; }, 2000);
-
-            // 3. 发射 H 键
+            // 发射 H
             triggerKey('h');
+            
+            // 【关键点2】松手后，延长护盾时间
+            // 确保全屏切换造成的任何延迟事件都被过滤掉
+            superBlocker = true;
+            setTimeout(() => { 
+                superBlocker = false; 
+            }, 2000); // 护盾持续 2秒
+        } else {
+            // 如果没满2秒松手，关闭护盾
+            superBlocker = false;
         }
         
         resetHold();
-    }, { capture: true }); // capture 确保优先拦截
+    }, { capture: true }); 
 
     window.addEventListener('touchcancel', resetHold, { capture: true });
     
+    // 拦截 Click 事件 (针对幽灵点击)
+    window.addEventListener('click', function(e){
+        if (superBlocker) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return false;
+        }
+    }, { capture: true });
+
     // 拦截右键
     window.addEventListener('contextmenu', function(e) {
-        if (hTriggerReady || sBlocker) {
+        if (superBlocker) {
             e.preventDefault();
             e.stopPropagation();
             return false;
@@ -177,7 +195,7 @@
     }, { capture: true });
 
 
-    // --- 4. S 键逻辑 (2.5秒宽松版) ---
+    // --- 4. S 键逻辑 (2.5秒宽松版 + 超级护盾识别) ---
     let clickCount = 0;
     let lastEventTime = 0;    
     let lastTarget = null;
@@ -192,8 +210,12 @@
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
 
-        // 如果屏蔽盾生效，直接无视
-        if (sBlocker) return;
+        // 【关键点3】 S键逻辑入口处的绝对防御
+        // 只要超级护盾开着，直接 Return，不计数，不触发，不执行任何S逻辑
+        if (superBlocker) {
+            // console.log("S key blocked by SuperShield");
+            return;
+        }
 
         if (target.ended) return; 
         if (target.seeking) return; 
