@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (2.5秒平衡版)
+// @name         安卓霸权键 (精致UI版)
 // @namespace    http://tampermonkey.net/
-// @version      43.0
-// @description  2.5秒懒人双击判定：既不抢手速也不误触；连击S(4秒)；长按2秒H
+// @version      45.0
+// @description  UI缩小不挡视线；修复长按H冲突；2.5秒宽松双击S；长按2秒H
 // @author       Gemini Helper
 // @match        *://*/*
 // @grant        none
@@ -12,18 +12,21 @@
 (function() {
     'use strict';
 
-    // --- 1. UI 系统 ---
+    // --- 1. UI 系统 (精致小巧版) ---
     let counterBox = null;
 
     function initUI() {
         if (document.body) {
             counterBox = document.createElement('div');
+            // 【修改】字号改小(45px)，位置上移(20%)，背景半透明黑
             counterBox.style.cssText = `
-                position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%);
-                font-size: 100px; font-weight: 900; color: rgba(255, 255, 255, 0.95);
-                text-shadow: 0 0 15px #000; z-index: 2147483647; pointer-events: none;
+                position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
+                font-size: 45px; font-weight: bold; color: rgba(255, 255, 255, 0.95);
+                text-shadow: 0 1px 3px rgba(0,0,0,0.8); 
+                z-index: 2147483647; pointer-events: none;
                 display: none; font-family: sans-serif; white-space: nowrap;
-                background: rgba(0,0,0,0.1); padding: 10px 30px; border-radius: 20px;
+                background: rgba(0, 0, 0, 0.5); 
+                padding: 5px 15px; border-radius: 8px;
                 backdrop-filter: blur(2px);
             `;
             document.body.appendChild(counterBox);
@@ -39,6 +42,7 @@
         counterBox.innerText = text;
         counterBox.style.color = color;
         counterBox.style.display = 'block';
+        // 动画幅度减小，看起来更稳重
         counterBox.style.transform = `translate(-50%, -50%) scale(${scale})`;
         
         clearTimeout(counterHideTimer);
@@ -55,7 +59,7 @@
             keyChar = 's'; keyCode = 83;
         } else if (keyName === 'h') {
             keyChar = 'h'; keyCode = 72;
-            showCounter("H", "#00d2ff", 1.2);
+            showCounter("H", "#00d2ff", 1.1);
         }
 
         const eventConfig = {
@@ -77,12 +81,14 @@
         });
     }
 
-    // --- 3. 全局长按 H ---
+    // --- 3. 全局长按 H (防冲突核心) ---
     let holdTimer = null;
     let holdInterval = null;
     let startX = 0;
     let startY = 0;
     let isHolding = false; 
+    let sBlocker = false;  // S键屏蔽盾
+    
     const HOLD_TIME = 2000; 
     const DRAG_THRESHOLD = 30; 
 
@@ -91,9 +97,10 @@
         if (holdInterval) clearInterval(holdInterval);
         holdTimer = null;
         holdInterval = null;
-        setTimeout(() => { isHolding = false; }, 100);
+        setTimeout(() => { isHolding = false; }, 200);
     }
 
+    // 触摸开始
     window.addEventListener('touchstart', function(e) {
         if (!document.querySelector('video, audio')) return;
         if (['INPUT', 'TEXTAREA'].includes(e.target.nodeName)) return;
@@ -107,17 +114,24 @@
         let count = 0;
         holdInterval = setInterval(() => {
             count++;
-            showCounter("·".repeat(count), "rgba(255, 255, 255, 0.4)", 0.8);
+            showCounter("·".repeat(count), "rgba(255, 255, 255, 0.6)", 1.0);
         }, 600);
 
+        // 触发 H
         holdTimer = setTimeout(() => {
             isHolding = true; 
+            
+            // 开启 S 键屏蔽盾 (1.5秒)
+            sBlocker = true;
+            setTimeout(() => { sBlocker = false; }, 1500);
+
             resetHold();
             triggerKey('h');
         }, HOLD_TIME);
         
     }, { passive: true, capture: true });
 
+    // 触摸移动
     window.addEventListener('touchmove', function(e) {
         if (!holdTimer) return;
         if(e.touches.length > 0){
@@ -128,10 +142,22 @@
         }
     }, { passive: true, capture: true });
 
-    window.addEventListener('touchend', resetHold, { capture: true });
-    window.addEventListener('touchcancel', resetHold, { capture: true });
-    window.addEventListener('contextmenu', function(e) {
+    // 触摸结束 (拦截点击)
+    window.addEventListener('touchend', function(e) {
         if (isHolding) {
+            if (e.cancelable) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        }
+        resetHold();
+    }, { capture: true }); 
+
+    window.addEventListener('touchcancel', resetHold, { capture: true });
+    
+    // 拦截右键
+    window.addEventListener('contextmenu', function(e) {
+        if (isHolding || sBlocker) {
             e.preventDefault();
             e.stopPropagation();
             return false;
@@ -139,22 +165,23 @@
     }, { capture: true });
 
 
-    // --- 4. S 键逻辑 (2.5秒平衡版) ---
+    // --- 4. S 键逻辑 (2.5秒宽松版) ---
     let clickCount = 0;
     let lastEventTime = 0;    
     let lastTarget = null;
     let comboMode = false;      
     let comboTimer = null;      
-    let resetCountTimer = null; // 用于重置双击计数的定时器
+    let resetCountTimer = null; 
 
-    // 【核心设置】双击有效时间窗口：2.5秒
-    // 既不要求手速，也不会因为暂停很久误触发
     const DOUBLE_CLICK_WINDOW = 2500; 
     const EVENT_DEBOUNCE = 50;       
 
     function globalHandler(e) {
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
+
+        // 屏蔽盾生效时，直接忽略
+        if (sBlocker) return;
 
         if (target.ended) return; 
         if (target.seeking) return; 
@@ -164,7 +191,6 @@
         if (now - lastEventTime < EVENT_DEBOUNCE) return;
         lastEventTime = now;
 
-        // 切换视频时重置
         if (lastTarget && lastTarget !== target) {
             clickCount = 0;
             comboMode = false;
@@ -173,46 +199,34 @@
         }
         lastTarget = target;
 
-        // 1. 如果处于连击模式 (S+)
+        // 连击模式
         if (comboMode) {
             triggerKey('s'); 
             showCounter("S+", "#55ff55"); 
-            
-            // 续杯 4秒 连击时间
             clearTimeout(comboTimer);
             comboTimer = setTimeout(() => {
                 comboMode = false;
                 clickCount = 0;
-                showCounter("End", "rgba(255,255,255,0.3)", 0.5); 
+                showCounter("End", "rgba(255,255,255,0.5)", 0.8); 
             }, 4000); 
             return;
         }
 
-        // 2. 普通模式
+        // 普通计数
         clickCount++;
-
-        // 清理掉之前的重置定时器，因为有了新的点击
         if (resetCountTimer) clearTimeout(resetCountTimer);
 
         if (clickCount === 1) {
-            showCounter("1", "rgba(255,255,255,0.6)");
-            
-            // 开启 2.5秒 倒计时
-            // 如果 2.5秒内没有点第二下，就自动把 '1' 清零
-            // 这样如果你很久之后再点，就会重新变成 '1'，而不是触发 S
+            showCounter("1", "rgba(255,255,255,0.7)");
             resetCountTimer = setTimeout(() => {
                 clickCount = 0;
             }, DOUBLE_CLICK_WINDOW);
         }
         else if (clickCount >= 2) {
-            // 在 2.5秒内点了第二下 -> 触发 S
             triggerKey('s');
             showCounter("S", "#fff");
-            
-            // 进入连击模式
             comboMode = true;
             clickCount = 0; 
-            
             if (comboTimer) clearTimeout(comboTimer);
             comboTimer = setTimeout(() => {
                 comboMode = false;
