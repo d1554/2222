@@ -4,7 +4,7 @@
 // @version      57.0
 // @description  H键改为左侧悬浮按钮；S键保留双击播放/暂停触发；去除静音模块
 // @author       Gemini Helper
-// @match        *://*/*
+// @match        *://*.douyin.com/*
 // @grant        none
 // @run-at       document-start
 // ==/UserScript==
