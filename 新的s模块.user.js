@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V57 左侧H键版)
+// @name         安卓霸权键 (V58 左上H键版)
 // @namespace    http://tampermonkey.net/
-// @version      57.0
-// @description  H键改为左侧悬浮按钮；S键保留双击播放/暂停触发；去除静音模块
+// @version      58.0
+// @description  H键移至左上角；S键双击播放/暂停触发；去除静音模块
 // @author       Gemini Helper
 // @match        *://*.douyin.com/*
 // @grant        none
@@ -34,18 +34,20 @@
         `;
         document.body.appendChild(toastBox);
 
-        // 1.2 创建左侧 H 按钮
+        // 1.2 创建左侧 H 按钮 (左上角位置)
         hButton = document.createElement('div');
         hButton.innerText = 'H';
         hButton.style.cssText = `
-            position: fixed; left: 0; top: 50%; transform: translateY(-50%);
-            width: 45px; height: 60px;
+            position: fixed; 
+            left: 0; 
+            top: 10%; /* 这里控制高度：10% 代表屏幕顶部往下一点，避免挡住浏览器地址栏 */
+            width: 45px; height: 50px;
             background: rgba(0, 210, 255, 0.4);
             color: white; font-size: 20px; font-weight: bold;
             display: flex; align-items: center; justify-content: center;
             border-top-right-radius: 10px; border-bottom-right-radius: 10px;
             z-index: 9999998; cursor: pointer; user-select: none;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
             backdrop-filter: blur(2px);
         `;
         
@@ -112,7 +114,7 @@
     }
 
     // --- 3. S 键逻辑 (双击 播放/暂停 触发) ---
-    // 逻辑：监听 Video/Audio 的 play 和 pause 事件，如果在短时间内连续发生两次，则触发 S
+    // 逻辑：监听 Video/Audio 的 play 和 pause 事件
     
     let clickCount = 0;
     let lastEventTime = 0;
@@ -124,7 +126,6 @@
 
     function handleMediaEvent(e) {
         const target = e.target;
-        // 仅处理媒体元素且非脚本触发的事件(大致判断)
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
         if (sCooldown) return;
 
