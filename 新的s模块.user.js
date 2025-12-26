@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V59 左上角粉色版)
+// @name         安卓霸权键 (V60 暴力顶格绿版)
 // @namespace    http://tampermonkey.net/
-// @version      59.0
-// @description  H键固定在左上角(80px处)；改为粉色以便区分；S键双击播放/暂停触发
+// @version      60.0
+// @description  H键：绝对左上角(0px)+绿色；S键：双击播放/暂停；(看到绿色H才算更新成功)
 // @author       Gemini Helper
 // @match        *://*.douyin.com/*
 // @grant        none
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    // --- 1. 全局 UI 系统 ---
+    // --- 1. UI 系统 ---
     let toastBox = null;
     let hButton = null;
 
@@ -28,27 +28,27 @@
             position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
             font-size: 40px; font-weight: bold; color: #fff;
             text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-            z-index: 9999999; pointer-events: none; display: none;
+            z-index: 2147483647; pointer-events: none; display: none;
             background: rgba(0, 0, 0, 0.6); padding: 8px 20px; border-radius: 12px;
             backdrop-filter: blur(4px); transition: opacity 0.2s;
         `;
         document.body.appendChild(toastBox);
 
-        // 1.2 H 按钮 (左上角 + 粉色)
+        // 1.2 H 按钮 (绝对左上角 + 绿色)
         hButton = document.createElement('div');
         hButton.innerText = 'H';
         hButton.style.cssText = `
             position: fixed; 
             left: 0; 
-            top: 80px;  /* 绝对的左上角位置，避开状态栏 */
+            top: 0; /* 0px：死死定在屏幕最顶端 */
             width: 45px; height: 50px;
-            background: rgba(255, 60, 100, 0.5); /* 改为粉色，方便确认更新 */
+            background: #00cc00; /* 改为显眼的绿色，看到绿色才算更新成功 */
             color: white; font-size: 20px; font-weight: bold;
             display: flex; align-items: center; justify-content: center;
-            border-top-right-radius: 10px; border-bottom-right-radius: 10px;
-            z-index: 9999998; cursor: pointer; user-select: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-            backdrop-filter: blur(2px);
+            border-bottom-right-radius: 10px;
+            z-index: 2147483647; /* 层级拉满，防止被遮挡 */
+            cursor: pointer; user-select: none;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
         `;
         
         // 点击 H 按钮事件
@@ -57,9 +57,9 @@
             e.stopPropagation();
             triggerKey('h'); // 触发 H
             
-            // 点击反馈 (变深红)
-            hButton.style.background = 'rgba(255, 60, 100, 0.9)';
-            setTimeout(() => hButton.style.background = 'rgba(255, 60, 100, 0.5)', 200);
+            // 点击反馈 (变亮绿)
+            hButton.style.background = '#33ff33';
+            setTimeout(() => hButton.style.background = '#00cc00', 200);
         });
 
         document.body.appendChild(hButton);
@@ -81,7 +81,7 @@
         }, 800);
     }
 
-    // --- 2. 模拟按键核心 ---
+    // --- 2. 模拟按键 ---
     function triggerKey(keyName) {
         let keyChar, keyCode;
         
@@ -90,7 +90,7 @@
             showToast("S 🚀", "#ff5555");
         } else if (keyName === 'h') {
             keyChar = 'h'; keyCode = 72;
-            showToast("H 🔥", "#00d2ff");
+            showToast("H 🟩", "#00ff00");
         }
 
         const eventConfig = {
@@ -112,7 +112,7 @@
         });
     }
 
-    // --- 3. S 键逻辑 (双击播放/暂停) ---
+    // --- 3. S 键逻辑 ---
     let clickCount = 0;
     let lastEventTime = 0;
     let sResetTimer = null;
