@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         安卓霸权键 (V58 左上H键版)
+// @name         安卓霸权键 (V59 左上角粉色版)
 // @namespace    http://tampermonkey.net/
-// @version      58.0
-// @description  H键移至左上角；S键双击播放/暂停触发；去除静音模块
+// @version      59.0
+// @description  H键固定在左上角(80px处)；改为粉色以便区分；S键双击播放/暂停触发
 // @author       Gemini Helper
 // @match        *://*.douyin.com/*
 // @grant        none
@@ -12,7 +12,7 @@
 (function() {
     'use strict';
 
-    // --- 1. 全局 UI 系统 (提示框 + H按钮) ---
+    // --- 1. 全局 UI 系统 ---
     let toastBox = null;
     let hButton = null;
 
@@ -22,7 +22,7 @@
             return;
         }
 
-        // 1.1 创建提示框 (Toast)
+        // 1.1 提示框
         toastBox = document.createElement('div');
         toastBox.style.cssText = `
             position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
@@ -34,15 +34,15 @@
         `;
         document.body.appendChild(toastBox);
 
-        // 1.2 创建左侧 H 按钮 (左上角位置)
+        // 1.2 H 按钮 (左上角 + 粉色)
         hButton = document.createElement('div');
         hButton.innerText = 'H';
         hButton.style.cssText = `
             position: fixed; 
             left: 0; 
-            top: 10%; /* 这里控制高度：10% 代表屏幕顶部往下一点，避免挡住浏览器地址栏 */
+            top: 80px;  /* 绝对的左上角位置，避开状态栏 */
             width: 45px; height: 50px;
-            background: rgba(0, 210, 255, 0.4);
+            background: rgba(255, 60, 100, 0.5); /* 改为粉色，方便确认更新 */
             color: white; font-size: 20px; font-weight: bold;
             display: flex; align-items: center; justify-content: center;
             border-top-right-radius: 10px; border-bottom-right-radius: 10px;
@@ -55,11 +55,11 @@
         hButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            triggerKey('h'); // 触发 H 键
+            triggerKey('h'); // 触发 H
             
-            // 点击反馈动画
-            hButton.style.background = 'rgba(0, 210, 255, 0.8)';
-            setTimeout(() => hButton.style.background = 'rgba(0, 210, 255, 0.4)', 200);
+            // 点击反馈 (变深红)
+            hButton.style.background = 'rgba(255, 60, 100, 0.9)';
+            setTimeout(() => hButton.style.background = 'rgba(255, 60, 100, 0.5)', 200);
         });
 
         document.body.appendChild(hButton);
@@ -101,7 +101,6 @@
             bubbles: true, cancelable: true, view: window
         };
         
-        // 向常用焦点元素发送按键
         const targets = [document.activeElement, document.body, document.documentElement];
         targets.forEach(t => {
             if(t) {
@@ -113,51 +112,42 @@
         });
     }
 
-    // --- 3. S 键逻辑 (双击 播放/暂停 触发) ---
-    // 逻辑：监听 Video/Audio 的 play 和 pause 事件
-    
+    // --- 3. S 键逻辑 (双击播放/暂停) ---
     let clickCount = 0;
     let lastEventTime = 0;
     let sResetTimer = null;
-    let sCooldown = false; // 冷却防止死循环
+    let sCooldown = false; 
 
-    const EVENT_DEBOUNCE = 50;   // 忽略极短时间内的重复事件 (ms)
-    const DOUBLE_CLICK_WINDOW = 2500; // 双击判定窗口 (ms)
+    const EVENT_DEBOUNCE = 50;   
+    const DOUBLE_CLICK_WINDOW = 2500; 
 
     function handleMediaEvent(e) {
         const target = e.target;
         if (!target || (target.nodeName !== 'VIDEO' && target.nodeName !== 'AUDIO')) return;
         if (sCooldown) return;
 
-        // 简单的去抖动
         const now = Date.now();
         if (now - lastEventTime < EVENT_DEBOUNCE) return;
         lastEventTime = now;
 
-        // 计数逻辑
         clickCount++;
 
         if (sResetTimer) clearTimeout(sResetTimer);
 
         if (clickCount === 1) {
             showToast("1", "rgba(255,255,255,0.6)");
-            // 开启重置计时器
             sResetTimer = setTimeout(() => {
                 clickCount = 0;
             }, DOUBLE_CLICK_WINDOW);
         }
         else if (clickCount >= 2) {
-            // 触发 S 键
             triggerKey('s');
-            
-            // 重置状态并进入短暂冷却
             clickCount = 0;
             sCooldown = true;
             setTimeout(() => { sCooldown = false; }, 1000);
         }
     }
 
-    // 使用 capture: true 确保尽可能早地捕获事件
     window.addEventListener('play', handleMediaEvent, true);
     window.addEventListener('pause', handleMediaEvent, true);
 
