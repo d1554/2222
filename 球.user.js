@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Bilibili 首页换一换悬浮球 (宽屏修正版)
+// @name         Bilibili 首页“换一换”按钮美化 (移至Banner区+圆形大号版)
 // @namespace    http://tampermonkey.net/
-// @version      3.0
-// @description  将“换一换”按钮强制提取为屏幕最前端的悬浮球，针对宽屏进行位置修正。
+// @version      1.1
+// @description  将B站首页的“换一换”按钮移动到Banner右下角，改为圆形，并显著增大尺寸。
 // @author       Gemini
 // @match        https://www.bilibili.com/*
 // @icon         https://www.bilibili.com/favicon.ico
@@ -13,72 +13,65 @@
 (function() {
     'use strict';
 
+    // 注入 CSS 样式
     GM_addStyle(`
-        /* 1. 强制固定定位 */
+        /* 1. 容器定位与尺寸调整 */
         .feed-roll-btn {
-            position: fixed !important;
-
-            /* ---【核心调试区：位置不对改这里】--- */
-
-            /* 垂直位置：距离屏幕顶部的高度 */
-            /* 之前可能太高了，稍微降一点点，或者根据您的浏览器书签栏高度微调 */
-            top: 195px !important;
-
-            /* 水平位置：从屏幕正中间往右推多少距离 */
-            left: 50% !important;
-            /* 之前是320px，现在大幅增加到 620px，确保它往右飞 */
-            margin-left: 620px !important;
-
-            /* --------------------------------- */
-
-            z-index: 99999 !important;
-
-            /* 尺寸设置 (60px) */
-            width: 60px !important;
-            height: 60px !important;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-            padding: 0 !important;
+            position: absolute !important;
+            /* 因为按钮变大了，需要往上提更多才能看起来在原来的位置区域 */
+            top: -80px !important;
+            right: 40px !important;
+            z-index: 100 !important;
+            margin: 0 !important;
+            /* 【核心改动】这里控制整体大小，从40改成了64 */
+            height: 64px !important;
+            width: 64px !important;
         }
 
-        /* 2. 按钮样式 - 玻璃质感圆球 */
+        /* 2. 按钮主体变形：变圆 */
         .feed-roll-btn .primary-btn.roll-btn {
             border-radius: 50% !important;
+            /* 【核心改动】按钮实体大小跟随容器 */
             width: 100% !important;
             height: 100% !important;
             min-width: unset !important;
             padding: 0 !important;
 
+            /* 居中图标 */
             display: flex !important;
             align-items: center;
             justify-content: center;
 
-            background: rgba(255, 255, 255, 0.85) !important;
-            backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(0, 0, 0, 0.05) !important;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15) !important;
+            /* 玻璃拟态背景 - 稍微加强了一点背景不透明度，大按钮更易读 */
+            background-color: rgba(255, 255, 255, 0.8) !important;
+            backdrop-filter: blur(8px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.5) !important;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+            color: #333 !important;
         }
 
-        /* 3. 隐藏文字 */
+        /* 3. 隐藏文字“换一换” */
         .feed-roll-btn .primary-btn.roll-btn span {
             display: none !important;
         }
 
-        /* 4. 图标优化 */
+        /* 4. 图标样式调整 */
         .feed-roll-btn .primary-btn.roll-btn svg {
+            /* 【核心改动】图标也相应放大，从20改成了32 */
             width: 32px !important;
             height: 32px !important;
-            color: #333 !important;
-            transition: transform 0.6s ease;
+            margin: 0 !important;
+            transition: transform 0.5s ease;
         }
 
-        /* 5. 交互动画 */
+        /* 5. 鼠标悬停交互效果 */
         .feed-roll-btn .primary-btn.roll-btn:hover {
-            transform: scale(1.1);
-            background: #fff !important;
-            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.25) !important;
+            background-color: #fff !important;
+            transform: scale(1.05); /* 稍微调小了缩放比例，因为本体已经很大了 */
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25) !important;
         }
 
+        /* 悬停时图标旋转一圈 */
         .feed-roll-btn .primary-btn.roll-btn:hover svg {
             transform: rotate(180deg);
         }
